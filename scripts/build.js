@@ -16,6 +16,9 @@ const files = [
   'lib/browser.js',
   'lib/demo.js',
   'lib/window-layout.js',
+  'lib/page-status.js',
+  'lib/providers/github.js',
+  'lib/providers/index.js',
   'assets/mark.svg',
   ...[16, 32, 48, 128].map((size) => `assets/icon-${size}.png`),
 ];

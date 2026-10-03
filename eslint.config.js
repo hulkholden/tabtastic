@@ -33,7 +33,7 @@ export default [
   },
   {
     // These globals occur inside Playwright's browser-side evaluate callbacks.
-    files: ['scripts/test-browser.js'],
+    files: ['scripts/test-*.js'],
     languageOptions: { globals: { ...globals.browser, chrome: 'readonly' } },
   },
 ];
