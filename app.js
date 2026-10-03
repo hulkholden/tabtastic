@@ -130,12 +130,18 @@ async function refresh() {
       state.scope = 'all';
     }
     render();
-    void pageStatuses
-      .refresh(snapshot.windows.flatMap((window) => window.tabs))
-      .catch((error) => notify(`Could not check page statuses: ${error.message}`, true));
+    refreshStatuses();
   } catch (error) {
     notify(`Could not refresh tabs: ${error.message}`, true);
     $('#connection').textContent = 'Connection interrupted';
+  }
+}
+
+function refreshStatuses() {
+  if (state.snapshot) {
+    void pageStatuses
+      .refresh(state.snapshot.windows.flatMap((window) => window.tabs))
+      .catch((error) => notify(`Could not check page statuses: ${error.message}`, true));
   }
 }
 
@@ -237,7 +243,7 @@ function renderNavigation(duplicates) {
   );
 }
 
-function render() {
+function render({ statusesOnly = false } = {}) {
   if (!state.snapshot) {
     return;
   }
@@ -249,32 +255,46 @@ function render() {
   const filtering = !!state.query.trim() || state.scope === 'duplicates' || !!selectedProvider();
   const selectedWindows = visibleWindows();
   let shownCount = 0;
+  // Only status updates reuse nodes; fresh tab snapshots rebuild their handlers.
+  const existing = statusesOnly
+    ? new Map([...$('#windows').children].map((card) => [Number(card.dataset.windowId), card]))
+    : new Map();
   const cards = [];
   for (const window of selectedWindows) {
     const segments = filteredSegments(window, duplicates);
     const count = segments.reduce((sum, segment) => sum + segment.tabs.length, 0);
     shownCount += count;
     if (count || !filtering) {
-      cards.push(renderWindow(window, segments, duplicates, filtering, count));
+      cards.push(
+        renderWindow(window, segments, duplicates, filtering, count, existing.get(window.id)),
+      );
     }
   }
-  renderNavigation(duplicates);
-  $('#windows').replaceChildren(...cards);
+  if (statusesOnly) {
+    reconcileChildren($('#windows'), cards);
+  } else {
+    renderNavigation(duplicates);
+    $('#windows').replaceChildren(...cards);
+    renderDuplicateControls(duplicates);
+    renderConnectionStatus();
+    renderDensityControl();
+  }
   renderEmptyState(cards.length);
   renderSummary(selectedWindows, filtering, shownCount, cards.length);
-  renderDuplicateControls(duplicates);
   renderSortControls(filtering, shownCount);
-  renderConnectionStatus();
-  renderDensityControl();
   renderProviderControls(allTabs);
   updateWindowLayout();
-  restoreFocus(focusKey);
+  if (!statusesOnly) {
+    restoreFocus(focusKey);
+  }
 }
 
 function filteredSegments(window, duplicates) {
   return segmentsForWindow(window, state.snapshot.groups)
-    .map((segment) => ({
+    .map((segment, index) => ({
       ...segment,
+      // Preserve each ungrouped run's identity as status filters hide its tabs.
+      id: index,
       tabs: segment.tabs.filter((tab) => {
         const matchesSearch = matchesTab(
           tab,
@@ -336,13 +356,17 @@ function renderProviderControls(tabs) {
     ...Object.entries(provider.states).map(([key, value]) => [key, value.label]),
     ['unknown', 'Unknown / failed'],
   ];
-  $('#status-filter').replaceChildren(
-    ...options.map(([value, label]) => {
-      const option = el('option', '', label);
-      option.value = value;
-      return option;
-    }),
-  );
+  const filter = $('#status-filter');
+  if (filter.dataset.provider !== provider.id) {
+    filter.replaceChildren(
+      ...options.map(([value, label]) => {
+        const option = el('option', '', label);
+        option.value = value;
+        return option;
+      }),
+    );
+    filter.dataset.provider = provider.id;
+  }
   $('#status-filter').value = state.statusFilter;
   const failed = statuses.filter((status) => status.error).length;
   const stale = statuses.filter((status) => status.stale).length;
@@ -402,9 +426,25 @@ function scheduleStatusRender() {
   clearTimeout(statusRenderTimer);
   statusRenderTimer = setTimeout(() => {
     if (!state.busy && state.dragId == null) {
-      render();
+      render({ statusesOnly: true });
     }
   }, 50);
+}
+
+// Leave surviving nodes attached so hover, focus and button presses survive
+// asynchronous status checks. Status filters only add/remove affected rows.
+function reconcileChildren(parent, children) {
+  const keep = new Set(children);
+  for (const child of [...parent.children]) {
+    if (!keep.has(child)) {
+      child.remove();
+    }
+  }
+  children.forEach((child, index) => {
+    if (parent.children[index] !== child) {
+      parent.insertBefore(child, parent.children[index] || null);
+    }
+  });
 }
 
 function renderEmptyState(windowCount) {
@@ -507,15 +547,34 @@ function restoreFocus(focusKey) {
   target?.focus({ preventScroll: true });
 }
 
-function renderWindow(window, segments, duplicates, filtering, count) {
-  const card = el('section', 'window-card');
+function renderWindow(window, segments, duplicates, filtering, count, existing) {
+  const card = existing || el('section', 'window-card');
+  card.dataset.windowId = window.id;
   card.setAttribute('aria-label', windowName(window));
-  const content = el('div', 'window-content');
-  for (const segment of segments) {
-    content.append(renderSection(window, segment, duplicates, filtering));
+  const content = existing?.querySelector('.window-content') || el('div', 'window-content');
+  const sections = new Map(
+    [...content.children].map((section) => [Number(section.dataset.segmentId), section]),
+  );
+  reconcileChildren(
+    content,
+    segments.map((segment) =>
+      renderSection(window, segment, duplicates, filtering, sections.get(segment.id)),
+    ),
+  );
+  if (existing) {
+    const meta = card.querySelector('.window-meta');
+    const label = windowMeta(window, count);
+    if (meta.textContent !== label) {
+      meta.textContent = label;
+    }
+  } else {
+    card.append(renderWindowHeader(window, count), content, renderWindowDropzone(window.id));
   }
-  card.append(renderWindowHeader(window, count), content, renderWindowDropzone(window.id));
   return card;
+}
+
+function windowMeta(window, count) {
+  return `${plural(count, 'tab')} · ${plural(countGroups(window.tabs), 'group')}${window.incognito ? ' · Incognito' : ''}`;
 }
 
 function renderWindowHeader(window, count) {
@@ -530,15 +589,7 @@ function renderWindowHeader(window, count) {
   );
   rename.dataset.focusKey = `rename-${window.id}`;
   titleLine.append(title, rename);
-  const groupCount = countGroups(window.tabs);
-  info.append(
-    titleLine,
-    el(
-      'p',
-      'window-meta',
-      `${plural(count, 'tab')} · ${plural(groupCount, 'group')}${window.incognito ? ' · Incognito' : ''}`,
-    ),
-  );
+  info.append(titleLine, el('p', 'window-meta', windowMeta(window, count)));
   header.append(badge, info);
   if (window.id === state.snapshot.currentWindowId) {
     header.append(el('span', 'current-badge', 'THIS WINDOW'));
@@ -561,25 +612,36 @@ function sectionName(segment) {
   return segment.pinned ? 'Pinned tabs' : 'Ungrouped';
 }
 
-function renderSection(window, segment, duplicates, filtering) {
+function renderSection(window, segment, duplicates, filtering, existing) {
   const isGroup = segment.groupId !== NO_GROUP;
   const collapsed = isGroup && segment.group?.collapsed && !filtering && !state.highlight;
-  const section = el(
-    'section',
-    `tab-section ${isGroup ? 'group-section' : ''} ${collapsed ? 'collapsed' : ''}`,
-  );
+  const section =
+    existing ||
+    el('section', `tab-section ${isGroup ? 'group-section' : ''} ${collapsed ? 'collapsed' : ''}`);
+  section.dataset.segmentId = segment.id;
   if (isGroup) {
     const [line, background, ink] = colors[segment.group?.color] || colors.grey;
     section.style.setProperty('--group-color', line);
     section.style.setProperty('--group-bg', background);
     section.style.setProperty('--group-ink', ink);
   }
-  section.append(renderSectionHeading(window, segment, collapsed, filtering));
-  if (!collapsed) {
-    for (const tab of segment.tabs) {
-      section.append(renderTab(tab, duplicates));
-    }
+  let heading = section.firstElementChild;
+  if (
+    !heading ||
+    heading.querySelector('.section-count').textContent !== String(segment.tabs.length) ||
+    heading.dataset.lastTabId !== String(segment.tabs.at(-1).id)
+  ) {
+    // An ungrouped heading's drop target depends on its last visible tab.
+    heading = renderSectionHeading(window, segment, collapsed, filtering);
   }
+  const rows = new Map(
+    [...section.querySelectorAll('.tab-row')].map((row) => [Number(row.dataset.tabId), row]),
+  );
+  const tabs = collapsed ? [] : segment.tabs;
+  reconcileChildren(section, [
+    heading,
+    ...tabs.map((tab) => renderTab(tab, duplicates, rows.get(tab.id))),
+  ]);
   return section;
 }
 
@@ -618,6 +680,7 @@ function renderSectionHeading(window, segment, collapsed, filtering) {
     heading.append(chevron);
   }
   const last = segment.tabs.at(-1);
+  heading.dataset.lastTabId = last.id;
   bindDrop(heading, {
     windowId: window.id,
     groupId: segment.groupId,
@@ -637,8 +700,16 @@ function renderWindowDropzone(windowId) {
   return dropzone;
 }
 
-function renderTab(tab, duplicates) {
+function renderTab(tab, duplicates, existing) {
   const duplicate = (state.highlight || state.scope === 'duplicates') && duplicates.ids.has(tab.id);
+  if (existing) {
+    const status = existing.querySelector('.tab-status');
+    const next = renderTabStatus(tab, duplicate);
+    if (!status.isEqualNode(next)) {
+      status.replaceWith(next);
+    }
+    return existing;
+  }
   const row = el(
     'div',
     `tab-row ${tab.active ? 'is-current' : ''} ${duplicate ? 'is-duplicate' : ''}`,
@@ -1064,7 +1135,7 @@ document.addEventListener('visibilitychange', () => {
     scheduleRefresh();
   }
 });
-browser.subscribe(scheduleRefresh);
+browser.subscribe(scheduleRefresh, refreshStatuses);
 await pageStatuses
   .init()
   .catch((error) => notify(`Could not load saved statuses: ${error.message}`, true));
