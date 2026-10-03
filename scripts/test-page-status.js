@@ -144,6 +144,7 @@ export async function verifyPageStatuses(context, page, artifacts, granted = fal
     ['3', 'pullDraft'],
   ]);
   let failed = false;
+  let heldChecks = null;
   let documentRequests = 0;
   const checks = [];
   const unexpectedRequests = [];
@@ -174,6 +175,9 @@ export async function verifyPageStatuses(context, page, artifacts, granted = fal
     }
     const id = new URL(request.url()).pathname.split('/')[4];
     const isCheck = request.resourceType() === 'fetch';
+    if (isCheck && heldChecks) {
+      await heldChecks.get(id);
+    }
     return route.fulfill({
       contentType: 'text/html',
       // GitHub issue responses advertise this extra request in an HTTP header.
@@ -303,6 +307,73 @@ export async function verifyPageStatuses(context, page, artifacts, granted = fal
   });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await page.setViewportSize({ width: 1440, height: 1100 });
+
+  // Hold each response so both progress callbacks and session-cache events run
+  // while the user is hovering/focusing controls, in All tabs and filtered views.
+  const releases = new Map();
+  heldChecks = new Map(
+    ['1', '2', '3'].map((id) => [id, new Promise((resolve) => releases.set(id, resolve))]),
+  );
+  await page.locator('#provider-refresh').click();
+  await page.getByRole('button', { name: 'All tabs', exact: true }).click();
+  await page.locator('#search').fill('github.com/example/test');
+  await page.locator(`[data-tab-id="${ids[1]}"] .close-tab`).hover();
+  await page.locator(`[data-tab-id="${ids[2]}"] .close-tab`).focus();
+  await rememberControls(page);
+  releases.get('2')();
+  await page.waitForFunction(
+    (id) =>
+      document.querySelector(`[data-tab-id="${id}"] .page-status-badge`).textContent === 'Merged',
+    ids[1],
+  );
+  // Allow the former full-snapshot refresh debounce to run after the cache write.
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  await assertControlsRetained(page);
+  assert.equal(
+    await page
+      .locator(`[data-tab-id="${ids[1]}"] .row-actions`)
+      .evaluate((node) => getComputedStyle(node).opacity),
+    '1',
+  );
+
+  await page.getByRole('button', { name: 'GitHub', exact: true }).click();
+  await page.locator('#status-filter').selectOption('finished');
+  await page.locator(`[data-tab-id="${ids[2]}"] .close-tab`).focus();
+  await rememberControls(page, [ids[1], ids[2]]);
+  statuses.set('1', 'issueOpened');
+  releases.get('1')();
+  await page.waitForFunction(() => document.querySelectorAll('.tab-row').length === 2);
+  statuses.set('3', 'pullClosed');
+  releases.get('3')();
+  await page.waitForFunction(() => document.querySelectorAll('.tab-row').length === 3);
+  await page.waitForFunction(() => !document.querySelector('#provider-refresh').disabled);
+  await assertControlsRetained(page);
+  assert.match(await page.locator('#summary').textContent(), /3 matching tabs/);
+  assert.equal(await page.locator('.section-count').textContent(), '3');
+  heldChecks = null;
+
+  // A result saved by another extension context must update the badge and
+  // filter without rebuilding the tab snapshot or navigation.
+  const worker = context.serviceWorkers()[0];
+  await worker.evaluate(async () => {
+    const key = 'page-status:github:https://github.com/example/test/pull/3';
+    const saved = (await chrome.storage.session.get(key))[key];
+    await chrome.storage.session.set({
+      [key]: { state: 'open', checkedAt: saved.checkedAt + 1, attemptedAt: saved.attemptedAt + 1 },
+    });
+  });
+  await page.waitForFunction(() => document.querySelectorAll('.tab-row').length === 2);
+  await assertControlsRetained(page);
+  await page.locator('#status-filter').selectOption('all');
+  assert.equal(
+    await page.locator(`[data-tab-id="${ids[3]}"] .page-status-badge`).textContent(),
+    'Open',
+  );
+  await page.locator('#search').fill('');
+  console.log(
+    'PASS: refresh keeps hovered/focused controls attached through progress, cache writes and filtered membership changes',
+  );
+
   await lifecycle.send('Page.setWebLifecycleState', { state: 'active' });
   await lifecycle.detach();
   await page.evaluate((ids) => chrome.tabs.remove(ids), ids);
@@ -311,4 +382,29 @@ export async function verifyPageStatuses(context, page, artifacts, granted = fal
   console.log(
     'PASS: GitHub header parsing, authenticated worker checks without preloads, filtered refresh, paused tabs, failure recovery and mobile layout',
   );
+}
+
+async function rememberControls(page, ids = null) {
+  await page.evaluate((ids) => {
+    const rows = [...document.querySelectorAll('.tab-row')].filter(
+      (row) => !ids || ids.includes(Number(row.dataset.tabId)),
+    );
+    globalThis.refreshControls = {
+      focus: document.activeElement,
+      nodes: [
+        ...rows.flatMap((row) => [row, ...row.querySelectorAll('.row-actions button')]),
+        ...document.querySelectorAll(
+          '#navigation button, #window-navigation button, #status-filter option',
+        ),
+      ],
+    };
+  }, ids);
+}
+
+async function assertControlsRetained(page) {
+  const result = await page.evaluate(() => ({
+    attached: globalThis.refreshControls.nodes.every((node) => node.isConnected),
+    focused: document.activeElement === globalThis.refreshControls.focus,
+  }));
+  assert.deepEqual(result, { attached: true, focused: true });
 }
