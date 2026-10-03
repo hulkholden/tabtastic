@@ -107,7 +107,7 @@ Set `EXTENSION_PATH=dist/tabtastic` when running `bun run test:browser` to test 
 - `favicon`: Chrome’s cached favicon endpoint. No external favicon service is used.
 - Optional `https://github.com/*` access: read issue and PR status chips using authenticated page requests. Only requested when you enable statuses.
 
-No required host permissions, content scripts, telemetry, or remote code. All extension code and assets are local. With GitHub access enabled, status checks send ordinary authenticated GET requests only to GitHub, with the browser supplying its existing session cookies; Tabtastic does not read or store credentials. Fetched HTML is parsed in an inert template and never displayed or executed. Only the URL, state, check times, and error information are cached. The service worker handles the toolbar shortcut and cleanup of labels for closed windows.
+No required host permissions, content scripts, telemetry, or remote code. All extension code and assets are local. With GitHub access enabled, status checks send ordinary authenticated GET requests only to GitHub, with the browser supplying its existing session cookies; Tabtastic does not read or store credentials. The service worker fetches pages so Chrome does not follow their HTTP preload hints. Fetched HTML is parsed in an inert template and never displayed or executed. Only the URL, state, check times, and error information are cached. The service worker also handles the toolbar shortcut and cleanup of labels for closed windows.
 
 ## Source layout
 
@@ -116,6 +116,7 @@ No required host permissions, content scripts, telemetry, or remote code. All ex
 - `lib/browser.js`: Chrome API adapter.
 - `lib/demo.js`: in-memory preview adapter.
 - `lib/providers/`: built-in page-status providers. GitHub owns URL matching, header parsing, state names, and access copy; register future providers in `index.js` and declare their optional origins in the manifest.
-- `lib/page-status.js`: shared permissions, authenticated fetches, session cache, and bounded refresh queue. Providers receive an inert HTML root and return a known state or `null`; no dynamic or remote plugin code is loaded.
-- `background.js`: toolbar action and window-label cleanup.
+- `lib/page-status.js`: shared permissions, inert HTML parsing, session cache, and bounded refresh queue. Providers receive an inert HTML root and return a known state or `null`; no dynamic or remote plugin code is loaded.
+- `lib/page-fetch.js`: authenticated HTML transport, run in the service worker to avoid HTTP preloads.
+- `background.js`: validated status requests, toolbar action, and window-label cleanup.
 - `scripts/serve.js`, `scripts/test-browser.js`, `tests/`: development preview and checks.

@@ -17,6 +17,7 @@ const files = [
   'lib/demo.js',
   'lib/window-layout.js',
   'lib/page-status.js',
+  'lib/page-fetch.js',
   'lib/providers/github.js',
   'lib/providers/index.js',
   'assets/mark.svg',

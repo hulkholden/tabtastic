@@ -4,7 +4,7 @@ import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { createServer } from 'node:http';
 
-async function verifyAuthenticatedFetch(context, page) {
+async function verifyAuthenticatedFetch(context, worker) {
   let receivedCookie;
   const server = createServer((request, response) => {
     receivedCookie = request.headers.cookie;
@@ -23,12 +23,8 @@ async function verifyAuthenticatedFetch(context, page) {
         sameSite: 'Strict',
       },
     ]);
-    const state = await page.evaluate(async (url) => {
-      const { createChromeStatusBackend } = await import('./lib/page-status.js');
-      const { github } = await import('./lib/providers/github.js');
-      return createChromeStatusBackend().read(github, { url });
-    }, url);
-    assert.equal(state, 'open');
+    const html = await worker.evaluate((url) => globalThis.testFetchPageHtml(url), url);
+    assert.match(html, /<span class="State">Open<\/span>/);
     assert.ok(receivedCookie?.includes('tabtastic_test_session=signed-in-fixture'));
   } finally {
     await new Promise((resolve) => server.close(resolve));
@@ -56,6 +52,13 @@ export async function verifyGrantedPageStatuses(chromium, launchOptions, extensi
     const manifest = JSON.parse(await readFile(resolve(root, 'manifest.json'), 'utf8'));
     manifest.host_permissions = ['https://github.com/*', 'http://127.0.0.1/*'];
     await writeFile(resolve(root, 'manifest.json'), JSON.stringify(manifest));
+    // Expose the production worker transport only in this isolated test copy,
+    // so the local cookie fixture need not become a supported status provider.
+    const background = await readFile(resolve(root, 'background.js'), 'utf8');
+    await writeFile(
+      resolve(root, 'background.js'),
+      `${background}\nglobalThis.testFetchPageHtml = fetchPageHtml;\n`,
+    );
     context = await chromium.launchPersistentContext('', {
       ...launchOptions,
       args: [`--disable-extensions-except=${root}`, `--load-extension=${root}`],
@@ -64,9 +67,10 @@ export async function verifyGrantedPageStatuses(chromium, launchOptions, extensi
     const page = await context.newPage();
     const errors = [];
     page.on('pageerror', (error) => errors.push(error.message));
-    await page.goto(`chrome-extension://${new URL(worker.url()).host}/index.html`);
+    // Exercise the actual new-tab override as well as direct extension URLs.
+    await page.goto('chrome://newtab/');
     await page.locator('.window-card').first().waitFor();
-    await verifyAuthenticatedFetch(context, page);
+    await verifyAuthenticatedFetch(context, worker);
     await verifyPageStatuses(context, page, artifacts, true);
     assert.deepEqual(errors, []);
   } finally {
@@ -142,13 +146,26 @@ export async function verifyPageStatuses(context, page, artifacts, granted = fal
   let failed = false;
   let documentRequests = 0;
   const checks = [];
+  const unexpectedRequests = [];
+  const preloadWarnings = [];
+  const onConsole = (message) => {
+    if (message.text().includes('preload')) {
+      preloadWarnings.push(message.text());
+    }
+  };
+  page.on('console', onConsole);
   await context.route('https://github.com/**', async (route) => {
     const request = route.request();
+    if (/secondary_view|fixture-resource/.test(request.url())) {
+      unexpectedRequests.push(request.url());
+      return route.fulfill({ status: 204, body: '' });
+    }
     if (request.resourceType() !== 'document' && request.resourceType() !== 'fetch') {
       return route.fulfill({ status: 204, body: '' });
     }
     if (request.resourceType() === 'fetch') {
       checks.push(request.url());
+      assert.ok(request.serviceWorker(), 'Status requests must come from the background worker');
     } else {
       documentRequests++;
     }
@@ -156,9 +173,17 @@ export async function verifyPageStatuses(context, page, artifacts, granted = fal
       return route.fulfill({ status: 503, body: 'Unavailable' });
     }
     const id = new URL(request.url()).pathname.split('/')[4];
+    const isCheck = request.resourceType() === 'fetch';
     return route.fulfill({
       contentType: 'text/html',
-      body: `<title>GitHub fixture ${id}</title><div data-component="PageHeader"><span data-component="StateLabel" data-status="${statuses.get(id)}">state</span></div><script>window.fixtureLoaded = true;</script>`,
+      // GitHub issue responses advertise this extra request in an HTTP header.
+      // A document fetch preloads it even if the HTML is never inserted into a page.
+      headers: isCheck
+        ? {
+            link: `<${request.url()}/secondary_view?markAsRead=true>; rel=preload; as=fetch; crossorigin=use-credentials`,
+          }
+        : {},
+      body: `<title>GitHub fixture ${id}</title>${isCheck ? '<link rel="preload" as="fetch" href="https://github.com/fixture-resource"><img src="https://github.com/fixture-resource">' : ''}<div data-component="PageHeader"><span data-component="StateLabel" data-status="${statuses.get(id)}">state</span></div><script>window.fixtureLoaded = true;</script>`,
     });
   });
   // Attach routing before navigation; tabs.create can load before Playwright
@@ -187,12 +212,21 @@ export async function verifyPageStatuses(context, page, artifacts, granted = fal
   if (!granted) {
     await page.locator('#provider-enable').waitFor({ state: 'visible' });
     assert.equal(checks.length, 0);
+    const denied = await page.evaluate(() =>
+      chrome.runtime.sendMessage({
+        type: 'page-status-fetch',
+        url: 'https://github.com/example/test/issues/1',
+      }),
+    );
+    assert.match(denied.error.message, /Enable statuses/);
+    assert.equal(checks.length, 0);
     assert.equal(
       await page.locator('.page-status-badge').filter({ hasText: 'Unknown' }).count(),
       4,
     );
     await page.evaluate((ids) => chrome.tabs.remove(ids), ids);
     await page.getByRole('button', { name: 'All tabs', exact: true }).click();
+    page.off('console', onConsole);
     console.log('PASS: no GitHub requests or inferred states without optional host access');
     return;
   }
@@ -201,6 +235,19 @@ export async function verifyPageStatuses(context, page, artifacts, granted = fal
     () => document.querySelectorAll('.page-status-badge.tone-purple').length === 2,
   );
   assert.equal(checks.length, 3);
+  const rejected = await page.evaluate(() =>
+    Promise.all(
+      [
+        'https://example.com/',
+        'https://github.com/example/test/issues/1/secondary_view?markAsRead=true',
+      ].map((url) => chrome.runtime.sendMessage({ type: 'page-status-fetch', url })),
+    ),
+  );
+  assert.ok(rejected.every((response) => /Unsupported/.test(response.error?.message)));
+  // Chrome reports unused preloads on a delayed timer, not when fetch resolves.
+  await new Promise((resolve) => setTimeout(resolve, 4000));
+  assert.deepEqual(unexpectedRequests, []);
+  assert.deepEqual(preloadWarnings, []);
   assert.equal(await page.evaluate(() => window.fixtureLoaded), undefined);
 
   // Chrome 145 crashes in tabs.discard under headless automation. Freeze a real
@@ -260,7 +307,8 @@ export async function verifyPageStatuses(context, page, artifacts, granted = fal
   await lifecycle.detach();
   await page.evaluate((ids) => chrome.tabs.remove(ids), ids);
   await page.getByRole('button', { name: 'All tabs', exact: true }).click();
+  page.off('console', onConsole);
   console.log(
-    'PASS: GitHub header parsing, authenticated checks, filtered refresh, paused tabs, failure recovery and mobile layout',
+    'PASS: GitHub header parsing, authenticated worker checks without preloads, filtered refresh, paused tabs, failure recovery and mobile layout',
   );
 }
