@@ -14,14 +14,14 @@ After changing the extension’s source, click **Reload** on its card in `chrome
 ### Load a clean bundle with your real tabs
 
 ```sh
-npm run build
+bun run build
 ```
 
 This creates `dist/tabtastic/` with only the extension’s runtime files and `dist/tabtastic.zip` for sharing or archiving (the ZIP requires the `zip` command, included on macOS).
 
 In your usual Chrome profile, open `chrome://extensions`, enable **Developer mode**, click **Load unpacked**, and choose `dist/tabtastic/`. Select the folder containing `manifest.json`, not the ZIP. Then open a new tab. Unlike the localhost preview, this uses your real tabs, windows, and groups. Sorting and dragging change your real Chrome tab strip.
 
-After edits, run `npm run build` again, click **Reload** on Tabtastic’s extension card, and refresh the new-tab page. Keep the bundle folder in place while the extension is installed. Disable Tabtastic in `chrome://extensions` to stop using it, and re-enable Favitabs if desired.
+After edits, run `bun run build` again, click **Reload** on Tabtastic’s extension card, and refresh the new-tab page. Keep the bundle folder in place while the extension is installed. Disable Tabtastic in `chrome://extensions` to stop using it, and re-enable Favitabs if desired.
 
 ## What it does
 
@@ -44,34 +44,49 @@ Sorting and moves are one-off actions, not ongoing auto-sort rules. If a tab clo
 
 ## Preview without installing
 
-With Node.js 20 or newer:
+With Bun 1.3.14 or newer:
 
 ```sh
-npm run dev
+bun run dev
 ```
 
 Open [the interactive preview](http://127.0.0.1:5173). It uses an isolated sample workspace with working search, sorting, duplicate highlighting, moving, labels, and closing. It never accesses your real Chrome tabs. Refreshing resets sample tabs. The actual extension detects Chrome’s APIs and uses live data instead.
 
 ## Verification
 
+Install the development tools with `bun install --frozen-lockfile` first. The project uses Bun for package management, scripts, and unit tests; no separate Node.js installation is needed. `bun.lock` records the dependency versions.
+
+Development scripts retain standard `node:` imports for filesystem, path, HTTP, and assertion APIs, which [Bun implements](https://bun.com/docs/runtime/nodejs-compat). ESLint and Prettier explicitly use `bun run --bun` so their executable shebangs do not fall back to Node.js. The extension itself still runs entirely in Chrome.
+
 ```sh
-npm run check
-npm test
+bun run check
+bun run test
 ```
+
+`bun run check` runs ESLint and Prettier. ESLint requires braces on every conditional and loop, multiline blocks, one statement per line, and spacing between functions. It also rejects nested ternaries and assignments returned from callbacks. Prettier handles indentation, wrapping, and consistent formatting across JavaScript, HTML, CSS, and JSON.
+
+To clean up edited code:
+
+```sh
+bun run lint:fix
+bun run format
+```
+
+Prefer small helpers named for their purpose, such as `filteredSegments`, `renderTabStatus`, and `validateMoveDestination`, when a function mixes separate responsibilities. Keep short, straightforward expressions inline. Generated bundles and browser-test artifacts are excluded from both tools.
 
 The unit tests cover conservative URL matching, group-preserving sort order, drag insertion indices, search, and the sample adapter.
 
 The browser suite loads the unpacked extension into a fresh temporary Chrome profile and tests real APIs, group boundaries, cross-window moves, storage, and UI interactions. Run the preview server first, then install Playwright for development:
 
 ```sh
-npm install --no-save playwright
-npx playwright install chromium
-npm run test:browser
+bun add --dev playwright
+bunx --bun playwright install chromium
+bun run test:browser
 ```
 
 To use an existing Playwright/browser installation, set `PLAYWRIGHT_MODULE` to its module path and `CHROMIUM_EXECUTABLE` to the browser executable. The suite writes desktop, duplicate, and narrow-layout screenshots to `artifacts/`.
 
-Set `EXTENSION_PATH=dist/tabtastic` when running `npm run test:browser` to test the generated bundle instead of the source folder. Automated tests always use a temporary profile; manual loading into your usual Chrome profile is what connects the extension to your real tabs.
+Set `EXTENSION_PATH=dist/tabtastic` when running `bun run test:browser` to test the generated bundle instead of the source folder. Automated tests always use a temporary profile; manual loading into your usual Chrome profile is what connects the extension to your real tabs.
 
 ## Permissions and privacy
 

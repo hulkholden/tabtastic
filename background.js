@@ -1,6 +1,6 @@
 chrome.action.onClicked.addListener(async () => {
   const url = chrome.runtime.getURL('index.html');
-  const existing = (await chrome.tabs.query({})).find(tab => tab.url === url);
+  const existing = (await chrome.tabs.query({})).find((tab) => tab.url === url);
   if (existing) {
     await chrome.tabs.update(existing.id, { active: true });
     await chrome.windows.update(existing.windowId, { focused: true });
@@ -9,6 +9,6 @@ chrome.action.onClicked.addListener(async () => {
   }
 });
 
-chrome.windows.onRemoved.addListener(windowId => {
+chrome.windows.onRemoved.addListener((windowId) => {
   chrome.storage.session.remove(`window-label-${windowId}`).catch(console.error);
 });
