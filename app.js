@@ -1,5 +1,6 @@
 import { createChromeBrowser } from './lib/browser.js';
 import { createDemoBrowser } from './lib/demo.js';
+import { createWindowLayout } from './lib/window-layout.js';
 import {
   displayUrl,
   findDuplicates,
@@ -11,6 +12,7 @@ import {
 
 const browser = globalThis.chrome?.tabs?.query ? createChromeBrowser() : createDemoBrowser();
 const $ = (selector) => document.querySelector(selector);
+const updateWindowLayout = createWindowLayout($('#windows'));
 const icons = {
   search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/>',
   layout: '<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18M9 9v11"/>',
@@ -241,6 +243,7 @@ function render() {
   renderSortControls(filtering, shownCount);
   renderConnectionStatus();
   renderDensityControl();
+  updateWindowLayout();
   restoreFocus(focusKey);
 }
 
