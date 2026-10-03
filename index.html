@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Tabtastic · Your tabs, together</title>
+  <link rel="icon" href="assets/mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to tabs</a>
+  <aside class="sidebar">
+    <a class="brand" href="index.html"><img src="assets/mark.svg" width="36" height="36" alt=""><span>tabtastic<span class="brand-dot">.</span></span></a>
+    <div class="sidebar-body">
+      <p class="eyebrow">YOUR SPACE</p>
+      <nav id="navigation" aria-label="Tab views"></nav>
+      <div class="windows-label"><p class="eyebrow">OPEN WINDOWS</p><span id="window-count" class="quiet-count"></span></div>
+      <nav id="window-navigation" aria-label="Windows"></nav>
+      <div class="sidebar-note"><span class="note-art" aria-hidden="true">↗</span><p>A place for every tab.<br>A little room to think.</p></div>
+    </div>
+    <div class="sidebar-bottom"><span class="live-dot"></span><span id="connection">Connecting to Chrome</span><button id="help" class="icon-button" title="Help & keyboard shortcuts" aria-label="Help & keyboard shortcuts">?</button></div>
+  </aside>
+  <main id="main" tabindex="-1">
+    <header class="page-header">
+      <div><p class="eyebrow">LESS SEARCHING. MORE DOING.</p><h1 id="heading">Your tabs, together<span>.</span></h1><p id="summary" class="subtitle">Getting your space ready…</p></div>
+      <div class="search-box"><span data-icon="search"></span><input id="search" type="search" placeholder="Find a tab…" aria-label="Search titles, URLs, groups, and windows" autocomplete="off"><kbd>/</kbd></div>
+    </header>
+    <div id="preview-banner" class="preview-banner" hidden><span><strong>Take a look around.</strong> This preview uses sample tabs.</span><button id="install-help">Load in Chrome <span aria-hidden="true">↗</span></button></div>
+    <section class="toolbar" aria-label="Organise tabs">
+      <div class="sort-control"><span class="order-indicator"><span data-icon="layout"></span>Chrome order</span><span class="toolbar-divider"></span><span class="toolbar-label">Sort tabs</span><div class="segmented" role="group" aria-label="Reorder Chrome tabs within their groups"><button data-sort="title" title="Reorder tabs by title in Chrome, within each group">Title <span class="sort-arrow">A–Z</span></button><button data-sort="url" title="Reorder tabs by URL in Chrome, within each group">URL <span class="sort-arrow">A–Z</span></button></div></div>
+      <div class="toolbar-actions"><button id="duplicates" class="soft-button" aria-pressed="false"><span data-icon="copy"></span>Find duplicates<span id="duplicate-count" class="count-badge">0</span></button><span class="toolbar-divider"></span><button id="density" class="icon-button" aria-label="Use compact rows" title="Use compact rows" aria-pressed="false"><span data-icon="density"></span></button></div>
+    </section>
+    <div class="view-context"><p id="view-description">Just like your browser, with a little more breathing room.</p><span id="live-label"><span class="live-dot"></span>In sync with Chrome</span></div>
+    <section id="duplicate-banner" class="duplicate-banner" hidden aria-live="polite"></section>
+    <div id="windows" class="window-grid" aria-label="Open tabs"></div>
+    <div id="empty" class="empty-state" hidden><span data-icon="search"></span><h2>No tabs found</h2><p>Try another title, website, or group name.</p><button id="clear-filters" class="soft-button">Clear filters</button></div>
+    <footer class="page-footer"><p><span data-icon="grip"></span>Drag to rearrange. Click to pick up where you left off.</p><p>Made for a clearer head<span class="tiny-spark">✳</span></p></footer>
+  </main>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <dialog id="dialog"><form id="dialog-form"><div class="dialog-heading"><h2 id="dialog-title"></h2><button type="button" id="dialog-close" class="icon-button" aria-label="Close dialog">×</button></div><div id="dialog-body"></div><div id="dialog-actions" class="dialog-actions"><button type="button" id="dialog-cancel" class="soft-button">Cancel</button><button id="dialog-save" type="submit" class="primary-button">Save</button></div></form></dialog>
+</body>
+</html>

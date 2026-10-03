@@ -1,0 +1,13 @@
+{
+  "name": "tabtastic",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.js",
+    "test": "node --test tests/*.test.js",
+    "test:browser": "node scripts/test-browser.js",
+    "dev": "node scripts/serve.js",
+    "check": "node --check app.js && node --check lib/browser.js && node --check lib/model.js && node --check lib/demo.js && node --check background.js"
+  }
+}
