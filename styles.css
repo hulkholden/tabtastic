@@ -551,10 +551,21 @@ h1 > span {
 }
 
 .window-grid {
+  --window-columns: 2;
+  --window-gap: 24px;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 24px;
+  grid-template-columns: repeat(var(--window-columns), minmax(0, 1fr));
+  gap: var(--window-gap);
   align-items: start;
+}
+
+.window-grid.packed-windows {
+  display: block;
+  position: relative;
+}
+
+.packed-windows > .window-card {
+  position: absolute;
 }
 
 .window-card {
@@ -1147,7 +1158,7 @@ dialog kbd {
 
 @media (min-width: 1700px) {
   .window-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    --window-columns: 3;
   }
   main {
     padding-left: 56px;
@@ -1188,7 +1199,7 @@ dialog kbd {
     font-size: 10px;
   }
   .window-grid {
-    gap: 18px;
+    --window-gap: 18px;
   }
   .window-header {
     padding: 18px 15px;
@@ -1220,7 +1231,7 @@ dialog kbd {
 
 @media (max-width: 1000px) {
   .window-grid {
-    grid-template-columns: 1fr;
+    --window-columns: 1;
   }
   .window-content {
     padding-left: 16px;
@@ -1351,7 +1362,7 @@ dialog kbd {
     display: none;
   }
   .window-grid {
-    gap: 20px;
+    --window-gap: 20px;
   }
   .window-header {
     padding: 17px 14px;

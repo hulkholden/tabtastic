@@ -2,6 +2,98 @@ import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { mkdir } from 'node:fs/promises';
 
+async function verifyWindowLayout(page, fixture) {
+  await page.evaluate(async ({ otherWindowId }) => {
+    await chrome.windows.create({ url: 'https://example.com/layout-only-3', focused: false });
+    await chrome.windows.create({ url: 'https://example.com/layout-only-4', focused: false });
+    for (let index = 0; index < 20; index++) {
+      await chrome.tabs.create({
+        windowId: otherWindowId,
+        url: `https://example.com/layout-long-${index}`,
+        active: false,
+      });
+    }
+  }, fixture);
+  await page.bringToFront();
+  await page.waitForFunction(() => document.querySelectorAll('.window-card').length === 4);
+  if ((await page.locator('#duplicates').getAttribute('aria-pressed')) === 'true') {
+    await page.getByRole('button', { name: 'Find duplicates', exact: false }).click();
+  }
+
+  // With a tall second window, the next two windows should fill the space
+  // below the first window instead of waiting for the second one's bottom.
+  await page.waitForFunction(() => {
+    const boxes = [...document.querySelectorAll('.window-card')].map((card) =>
+      card.getBoundingClientRect(),
+    );
+    return (
+      Math.abs(boxes[2].top - boxes[0].bottom - 24) < 1 &&
+      Math.abs(boxes[3].top - boxes[2].bottom - 24) < 1 &&
+      boxes[3].bottom < boxes[1].bottom
+    );
+  });
+  await page.screenshot({
+    path: resolve(artifacts, 'tabtastic-four-windows.png'),
+    fullPage: true,
+    animations: 'disabled',
+  });
+
+  const thirdTop = await page
+    .locator('.window-card')
+    .nth(2)
+    .evaluate((card) => card.getBoundingClientRect().top);
+  await page.locator(`[data-focus-key="group-${fixture.groupId}"]`).click();
+  await page.waitForFunction((previousTop) => {
+    const cards = document.querySelectorAll('.window-card');
+    const first = cards[0].getBoundingClientRect();
+    const third = cards[2].getBoundingClientRect();
+    return third.top < previousTop - 30 && Math.abs(third.top - first.bottom - 24) < 1;
+  }, thirdTop);
+
+  await page.setViewportSize({ width: 1900, height: 1100 });
+  await page.waitForFunction(() => {
+    const boxes = [...document.querySelectorAll('.window-card')].map((card) =>
+      card.getBoundingClientRect(),
+    );
+    return (
+      Math.abs(boxes[0].top - boxes[2].top) < 1 &&
+      Math.abs(boxes[3].left - boxes[2].left) < 1 &&
+      Math.abs(boxes[3].top - boxes[2].bottom - 24) < 1
+    );
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForFunction(() => {
+    const boxes = [...document.querySelectorAll('.window-card')].map((card) =>
+      card.getBoundingClientRect(),
+    );
+    return boxes.every(
+      (box, index) =>
+        index === 0 ||
+        (Math.abs(box.left - boxes[index - 1].left) < 1 &&
+          Math.abs(box.top - boxes[index - 1].bottom - 20) < 1),
+    );
+  });
+  await page.locator('#search').fill('layout-only-3');
+  await page.waitForFunction(() => document.querySelectorAll('.window-card').length === 1);
+  const layout = await page.evaluate(() => ({
+    cardHeight: document.querySelector('.window-card').getBoundingClientRect().height,
+    containerHeight: document.querySelector('#windows').getBoundingClientRect().height,
+    fitsViewport: document.documentElement.scrollWidth <= window.innerWidth,
+  }));
+  assert.ok(Math.abs(layout.cardHeight - layout.containerHeight) < 1);
+  assert.ok(layout.fitsViewport);
+  await page.locator('#search').fill('no-window-matches-this');
+  await page.waitForFunction(() => document.querySelectorAll('.window-card').length === 0);
+  assert.equal(
+    await page.locator('#windows').evaluate((node) => node.getBoundingClientRect().height),
+    0,
+  );
+  console.log(
+    'PASS: unequal window heights pack without gaps; collapse, resize, and filtering reflow cards',
+  );
+}
+
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const root = resolve(import.meta.dirname, '..');
 const extensionRoot = process.env.EXTENSION_PATH ? resolve(process.env.EXTENSION_PATH) : root;
@@ -181,6 +273,8 @@ try {
   await page.reload();
   await page.locator('.window-title', { hasText: 'My test window' }).waitFor();
   console.log('PASS: window labels persist across new-tab page reloads');
+
+  await verifyWindowLayout(page, fixture);
 
   const preview = await context.newPage();
   await preview.goto('http://127.0.0.1:5173');
