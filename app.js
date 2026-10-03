@@ -1,6 +1,8 @@
 import { createChromeBrowser } from './lib/browser.js';
 import { createDemoBrowser } from './lib/demo.js';
 import { createWindowLayout } from './lib/window-layout.js';
+import { createPageStatuses } from './lib/page-status.js';
+import { pageTarget, providers } from './lib/providers/index.js';
 import {
   displayUrl,
   findDuplicates,
@@ -11,6 +13,7 @@ import {
 } from './lib/model.js';
 
 const browser = globalThis.chrome?.tabs?.query ? createChromeBrowser() : createDemoBrowser();
+const pageStatuses = createPageStatuses(browser.statusBackend, scheduleStatusRender);
 const $ = (selector) => document.querySelector(selector);
 const updateWindowLayout = createWindowLayout($('#windows'));
 const icons = {
@@ -29,6 +32,9 @@ const icons = {
   pin: '<path d="m9 3 6 0-1 6 4 4v2H6v-2l4-4-1-6ZM12 15v6"/>',
   move: '<path d="M4 12h16m-5-5 5 5-5 5"/>',
   sound: '<path d="m11 4-6 5H2v6h3l6 5V4Zm4 4a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/>',
+  branch:
+    '<circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="6" r="2"/><path d="M6 7v10m12-9v3a4 4 0 0 1-4 4H6"/>',
+  refresh: '<path d="M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-1l2 6M4 12l2 6a7 7 0 0 0 12-1"/>',
 };
 const colors = {
   grey: ['#acb4a9', '#f0f2ee', '#616d5b'],
@@ -50,8 +56,11 @@ const state = {
   busy: false,
   dragId: null,
   refreshVersion: 0,
+  statusFilter: 'all',
+  enablingProvider: false,
 };
 let refreshTimer;
+let statusRenderTimer;
 let toastTimer;
 let dialogSubmit;
 
@@ -121,6 +130,9 @@ async function refresh() {
       state.scope = 'all';
     }
     render();
+    void pageStatuses
+      .refresh(snapshot.windows.flatMap((window) => window.tabs))
+      .catch((error) => notify(`Could not check page statuses: ${error.message}`, true));
   } catch (error) {
     notify(`Could not refresh tabs: ${error.message}`, true);
     $('#connection').textContent = 'Connection interrupted';
@@ -165,7 +177,12 @@ function visibleWindows() {
 
 function setScope(scope) {
   state.scope = scope;
+  state.statusFilter = 'all';
   render();
+}
+
+function selectedProvider() {
+  return providers.find((provider) => provider.id === state.scope);
 }
 
 function renderNavigation(duplicates) {
@@ -178,6 +195,12 @@ function renderNavigation(duplicates) {
       ['all', 'All tabs', 'layout', tabs.length],
       ['current', 'This window', 'window', currentWindow?.tabs.length || 0],
       ['duplicates', 'Duplicates', 'copy', duplicates.ids.size],
+      ...providers.map((provider) => [
+        provider.id,
+        provider.label,
+        'branch',
+        tabs.filter((tab) => pageTarget(tab)?.provider.id === provider.id).length,
+      ]),
     ].map(([scope, label, symbol, count]) => {
       const node = button(
         `nav-button ${state.scope === scope ? 'active' : ''}`,
@@ -223,7 +246,7 @@ function render() {
   const { windows } = state.snapshot;
   const allTabs = windows.flatMap((w) => w.tabs);
   const duplicates = findDuplicates(allTabs);
-  const filtering = !!state.query.trim() || state.scope === 'duplicates';
+  const filtering = !!state.query.trim() || state.scope === 'duplicates' || !!selectedProvider();
   const selectedWindows = visibleWindows();
   let shownCount = 0;
   const cards = [];
@@ -243,6 +266,7 @@ function render() {
   renderSortControls(filtering, shownCount);
   renderConnectionStatus();
   renderDensityControl();
+  renderProviderControls(allTabs);
   updateWindowLayout();
   restoreFocus(focusKey);
 }
@@ -259,10 +283,128 @@ function filteredSegments(window, duplicates) {
           windowName(window),
         );
         const matchesScope = state.scope !== 'duplicates' || duplicates.ids.has(tab.id);
-        return matchesSearch && matchesScope;
+        return matchesSearch && matchesScope && matchesStatusFilter(tab);
       }),
     }))
     .filter((segment) => segment.tabs.length > 0);
+}
+
+function matchesStatusFilter(tab) {
+  const provider = selectedProvider();
+  if (!provider) {
+    return true;
+  }
+  const status = pageStatuses.get(tab);
+  if (status?.provider.id !== provider.id) {
+    return false;
+  }
+  if (state.statusFilter === 'finished') {
+    return !!provider.states[status.state]?.finished;
+  }
+  if (state.statusFilter === 'unknown') {
+    return status.state === 'unknown' || !!status.error;
+  }
+  return state.statusFilter === 'all' || status.state === state.statusFilter;
+}
+
+function renderProviderControls(tabs) {
+  const provider = selectedProvider();
+  $('#provider-controls').hidden = !provider;
+  if (!provider) {
+    return;
+  }
+  const allowed = pageStatuses.hasAccess(provider);
+  const statuses = tabs
+    .map((tab) => pageStatuses.get(tab))
+    .filter((status) => status?.provider.id === provider.id);
+  $('#provider-title').textContent = `${provider.label} ${provider.itemLabel}`;
+  $('#provider-description').textContent = allowed
+    ? 'Refresh checks the latest page status, including paused tabs. Hover a badge for the last check time.'
+    : provider.accessDescription;
+  $('#provider-enable').hidden = allowed;
+  $('#provider-enable').disabled = state.enablingProvider;
+  $('#provider-refresh').hidden = !allowed;
+  $('#provider-refresh').disabled = !!pageStatuses.progress || !statuses.length;
+  $('#provider-refresh').title =
+    'Check every matching page, including items hidden by filters. Tabs stay paused.';
+  $('#provider-refresh-label').textContent = pageStatuses.progress
+    ? 'Refreshing…'
+    : 'Refresh statuses';
+  const options = [
+    ['all', 'All statuses'],
+    ['finished', provider.finishedLabel || 'Finished'],
+    ...Object.entries(provider.states).map(([key, value]) => [key, value.label]),
+    ['unknown', 'Unknown / failed'],
+  ];
+  $('#status-filter').replaceChildren(
+    ...options.map(([value, label]) => {
+      const option = el('option', '', label);
+      option.value = value;
+      return option;
+    }),
+  );
+  $('#status-filter').value = state.statusFilter;
+  const failed = statuses.filter((status) => status.error).length;
+  const stale = statuses.filter((status) => status.stale).length;
+  const progress = pageStatuses.progress;
+  let message = `${plural(statuses.length, 'tab')} · Status checks are cached for five minutes.`;
+  if (progress) {
+    message = `Checking ${progress.done} of ${progress.total} pages…`;
+  } else if (failed || stale) {
+    message = `${failed} unavailable · ${stale} stale. Refresh to retry; hover badges for details.`;
+  }
+  $('#provider-progress').textContent = allowed
+    ? message
+    : 'Status checks begin after you enable access.';
+}
+
+async function enableProvider() {
+  const provider = selectedProvider();
+  if (!provider || state.enablingProvider) {
+    return;
+  }
+  state.enablingProvider = true;
+  try {
+    // Invoke before any await so Chrome can show its optional-access prompt.
+    const granted = await pageStatuses.enable(provider);
+    if (granted) {
+      await refresh();
+    } else {
+      notify(`${provider.label} access was not enabled. You can try again at any time.`);
+    }
+  } catch (error) {
+    notify(error.message, true);
+  } finally {
+    state.enablingProvider = false;
+    render();
+  }
+}
+
+async function refreshProvider() {
+  const provider = selectedProvider();
+  if (!provider || pageStatuses.refreshing) {
+    return;
+  }
+  try {
+    await pageStatuses.refresh(
+      state.snapshot.windows.flatMap((window) => window.tabs),
+      {
+        force: true,
+        providerId: provider.id,
+      },
+    );
+  } catch (error) {
+    notify(error.message, true);
+  }
+}
+
+function scheduleStatusRender() {
+  clearTimeout(statusRenderTimer);
+  statusRenderTimer = setTimeout(() => {
+    if (!state.busy && state.dragId == null) {
+      render();
+    }
+  }, 50);
 }
 
 function renderEmptyState(windowCount) {
@@ -285,6 +427,9 @@ function renderSummary(selectedWindows, filtering, shownCount, windowCount) {
     all: 'Your tabs, together',
     current: 'Right here, right now',
     duplicates: 'Seeing double?',
+    ...Object.fromEntries(
+      providers.map((provider) => [provider.id, `${provider.label}, at a glance`]),
+    ),
   };
   $('#heading').replaceChildren(
     document.createTextNode(headings[state.scope] || windowName(selectedWindows[0])),
@@ -323,13 +468,13 @@ function renderDuplicateControls(duplicates) {
 
 function renderSortControls(filtering, shownCount) {
   $('#view-description').textContent = filtering
-    ? 'Search and duplicate results keep their window and group context.'
+    ? 'Filtered tabs keep their window and group context.'
     : 'Just like your browser, with a little more breathing room.';
   // A filtered list must never silently reorder hidden tabs.
   document.querySelectorAll('[data-sort]').forEach((node) => {
     node.disabled = state.busy || filtering || !shownCount;
     node.title = filtering
-      ? 'Clear search and duplicate filters to sort this view’s windows.'
+      ? 'Show an unfiltered tab view to sort its windows.'
       : `Reorder Chrome tabs by ${node.dataset.sort}, keeping groups and pinned tabs in place`;
   });
 }
@@ -452,7 +597,7 @@ function renderSectionHeading(window, segment, collapsed, filtering) {
     );
     heading.addEventListener('click', () => {
       if (filtering || state.highlight) {
-        notify('Groups stay expanded while showing search results or duplicates.');
+        notify('Groups stay expanded while showing filtered results or duplicates.');
         return;
       }
       action(() => browser.collapseGroup(segment.groupId, !collapsed));
@@ -561,6 +706,40 @@ function renderFavicon(tab) {
 
 function renderTabStatus(tab, duplicate) {
   const status = el('span', 'tab-status');
+  const pageStatus = pageStatuses.get(tab);
+  if (pageStatus) {
+    status.classList.add('has-page-status');
+    const definition = pageStatus.provider.states[pageStatus.state];
+    let label = definition?.label || 'Unknown';
+    if (pageStatus.pending) {
+      label = 'Checking…';
+    } else if (pageStatus.stale) {
+      label += ' · stale';
+    }
+    const badge = el('span', `page-status-badge tone-${definition?.tone || 'grey'}`, label);
+    const details = [`${pageStatus.kind}: ${definition?.label || 'Unknown'}`];
+    if (pageStatus.checkedAt) {
+      details.push(`Last checked ${new Date(pageStatus.checkedAt).toLocaleString()}`);
+    }
+    if (pageStatus.error) {
+      details.push(pageStatus.error);
+    }
+    if (pageStatus.needsAccess) {
+      details.push(`Enable statuses in the ${pageStatus.provider.label} view.`);
+    }
+    if (pageStatus.stale) {
+      details.push('This saved status may have changed. Refresh to check again.');
+    }
+    badge.title = details.join('\n');
+    badge.setAttribute('aria-label', details.join('. '));
+    status.append(badge);
+    if (tab.discarded || tab.frozen) {
+      const paused = el('span', 'paused-mark', 'Ⅱ');
+      paused.title = 'Paused tab. Status checks work without waking it.';
+      paused.setAttribute('aria-label', paused.title);
+      status.append(paused);
+    }
+  }
   if (duplicate) {
     const mark = el('span', 'duplicate-mark', 'duplicate');
     mark.title = 'The same full URL is open in another tab';
@@ -825,6 +1004,12 @@ $('#density').addEventListener('click', () => {
   localStorage.setItem('compact', String(state.compact));
   render();
 });
+$('#provider-enable').addEventListener('click', enableProvider);
+$('#provider-refresh').addEventListener('click', refreshProvider);
+$('#status-filter').addEventListener('change', (event) => {
+  state.statusFilter = event.target.value;
+  render();
+});
 $('#clear-filters').addEventListener('click', () => {
   state.scope = 'all';
   state.query = '';
@@ -880,4 +1065,9 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 browser.subscribe(scheduleRefresh);
+await pageStatuses
+  .init()
+  .catch((error) => notify(`Could not load saved statuses: ${error.message}`, true));
+// Keep the visible age indication honest even when no tab events arrive.
+setInterval(scheduleStatusRender, 60000);
 await refresh();

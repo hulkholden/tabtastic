@@ -33,6 +33,17 @@ After edits, run `bun run build` again, click **Reload** on Tabtastic’s extens
 - The row’s **Move** button is a keyboard-accessible alternative to dragging. The **Close** button closes that one tab; use Chrome’s Reopen closed tab command to restore it.
 - Search titles, URLs, group names, and Tabtastic window labels. `/` or `⌘/Ctrl K` focuses search, `Enter` switches to the first result, and `Escape` clears search. Search and duplicate highlighting temporarily reveal collapsed groups without changing their saved collapsed state.
 - Compact rows, local favicons, current-window indicators, and audio indicators.
+- **GitHub** view with Open, Draft, Merged, Closed, and Not planned badges for issue and pull-request tabs. Filter to **Closed / merged** to find finished work, then use each row’s Close button.
+
+### GitHub statuses without a token
+
+Open **GitHub** in the sidebar and choose **Enable statuses**. Chrome asks for optional access to `https://github.com/*`. Tabtastic uses your existing GitHub sign-in to fetch issue and PR pages and read their header status chips; it does not use the GitHub API or require a PAT. Badges then appear in every tab view. Repository pages and other GitHub pages are excluded from the GitHub view.
+
+**Refresh statuses** checks every issue and PR tab, including those hidden by search or status filters. It fetches a fresh copy of the page without activating, reloading, or resuming the actual tab. Chrome Memory Saver/discarded and frozen tabs therefore work, and unfinished comments remain untouched. PR subpages such as Files changed share a single check with the conversation tab. Up to three pages are checked concurrently, with progress shown in the view.
+
+Successful checks are reused for five minutes and rechecked when the dashboard next updates. Hover a badge for its last check time. Older results are labelled **stale**; a failed check preserves the previous result with that same label and an error explanation. **Unknown / failed** finds inaccessible or unreadable pages. Refresh retries failures. Nothing is closed automatically.
+
+Checks run while a Tabtastic dashboard is open. Statuses are cached in session storage, so they survive dashboard reloads but reset on browser restart or extension reload. Revoke GitHub access through Chrome’s extension settings. Private repositories use your browser’s session; sign-in, cookie restrictions, network errors, redirected pages, or GitHub markup changes can prevent a check. A missing chip is treated as unknown, never as closed. GitHub Enterprise hosts, incognito status checks, and third-party suspender pages that replace the original URL are not currently supported.
 
 ### Window names and other limits
 
@@ -74,9 +85,9 @@ bun run format
 
 Prefer small helpers named for their purpose, such as `filteredSegments`, `renderTabStatus`, and `validateMoveDestination`, when a function mixes separate responsibilities. Keep short, straightforward expressions inline. Generated bundles and browser-test artifacts are excluded from both tools.
 
-The unit tests cover conservative URL matching, group-preserving sort order, drag insertion indices, search, and the sample adapter.
+The unit tests cover conservative URL matching, group-preserving sort order, drag insertion indices, search, the sample adapter, status caching, permission handling, and refresh concurrency.
 
-The browser suite loads the unpacked extension into a fresh temporary Chrome profile and tests real APIs, group boundaries, cross-window moves, storage, and UI interactions. Run the preview server first, then install Playwright for development:
+The browser suite loads the unpacked extension into a fresh temporary Chrome profile and tests real APIs, group boundaries, cross-window moves, storage, and UI interactions. GitHub checks use intercepted HTML fixtures; a local HTTP server verifies that the fetch backend sends an existing HttpOnly/SameSite cookie. Tests cover current/legacy header chips, denied access, refresh without reloading or activating source tabs, failed refreshes, and narrow layouts. Because native permission prompts cannot be clicked in headless Chrome, granted-access checks use a temporary extension copy with GitHub and the local cookie fixture host pre-granted. Chrome 145 crashes when its headless driver calls `tabs.discard`, so the browser suite freezes a renderer instead; discarded snapshots are covered by unit tests. Run the preview server first, then install Playwright for development:
 
 ```sh
 bun add --dev playwright
@@ -92,10 +103,11 @@ Set `EXTENSION_PATH=dist/tabtastic` when running `bun run test:browser` to test 
 
 - `tabs`: titles, URLs, and tab management.
 - `tabGroups`: group names, colours, and collapse state.
-- `storage`: window labels in session storage. The row-density preference uses local storage.
+- `storage`: window labels and page-status checks in session storage. The row-density preference uses local storage.
 - `favicon`: Chrome’s cached favicon endpoint. No external favicon service is used.
+- Optional `https://github.com/*` access: read issue and PR status chips using authenticated page requests. Only requested when you enable statuses.
 
-No host permissions, content scripts, telemetry, remote code, or external data transmission. All extension code and assets are local. The service worker handles only the toolbar shortcut and cleanup of labels for closed windows.
+No required host permissions, content scripts, telemetry, or remote code. All extension code and assets are local. With GitHub access enabled, status checks send ordinary authenticated GET requests only to GitHub, with the browser supplying its existing session cookies; Tabtastic does not read or store credentials. Fetched HTML is parsed in an inert template and never displayed or executed. Only the URL, state, check times, and error information are cached. The service worker handles the toolbar shortcut and cleanup of labels for closed windows.
 
 ## Source layout
 
@@ -103,5 +115,7 @@ No host permissions, content scripts, telemetry, remote code, or external data t
 - `lib/model.js`: pure search, duplicate, segmentation, and insertion logic.
 - `lib/browser.js`: Chrome API adapter.
 - `lib/demo.js`: in-memory preview adapter.
+- `lib/providers/`: built-in page-status providers. GitHub owns URL matching, header parsing, state names, and access copy; register future providers in `index.js` and declare their optional origins in the manifest.
+- `lib/page-status.js`: shared permissions, authenticated fetches, session cache, and bounded refresh queue. Providers receive an inert HTML root and return a known state or `null`; no dynamic or remote plugin code is loaded.
 - `background.js`: toolbar action and window-label cleanup.
 - `scripts/serve.js`, `scripts/test-browser.js`, `tests/`: development preview and checks.

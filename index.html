@@ -95,6 +95,22 @@
           </button>
         </div>
       </section>
+      <section id="provider-controls" class="provider-controls" aria-label="Page statuses" hidden>
+        <div class="provider-copy">
+          <strong id="provider-title"></strong>
+          <p id="provider-description"></p>
+        </div>
+        <div class="provider-actions">
+          <label for="status-filter">Status</label>
+          <select id="status-filter"></select>
+          <button id="provider-enable" class="soft-button">Enable statuses</button>
+          <button id="provider-refresh" class="soft-button" hidden>
+            <span data-icon="refresh"></span
+            ><span id="provider-refresh-label">Refresh statuses</span>
+          </button>
+        </div>
+        <p id="provider-progress" role="status"></p>
+      </section>
       <div class="view-context">
         <p id="view-description">Just like your browser, with a little more breathing room.</p>
         <span id="live-label"><span class="live-dot"></span>In sync with Chrome</span>

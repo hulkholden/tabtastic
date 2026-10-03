@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { mkdir } from 'node:fs/promises';
+import { verifyPageStatuses, verifyGrantedPageStatuses } from './test-page-status.js';
 
 async function verifyWindowLayout(page, fixture) {
   await page.evaluate(async ({ otherWindowId }) => {
@@ -99,14 +100,15 @@ const root = resolve(import.meta.dirname, '..');
 const extensionRoot = process.env.EXTENSION_PATH ? resolve(process.env.EXTENSION_PATH) : root;
 const artifacts = resolve(root, 'artifacts');
 await mkdir(artifacts, { recursive: true });
-const context = await chromium.launchPersistentContext('', {
+const launchOptions = {
   headless: true,
   ...(process.env.CHROMIUM_EXECUTABLE
     ? { executablePath: process.env.CHROMIUM_EXECUTABLE }
     : { channel: 'chromium' }),
   args: [`--disable-extensions-except=${extensionRoot}`, `--load-extension=${extensionRoot}`],
   viewport: { width: 1440, height: 1100 },
-});
+};
+const context = await chromium.launchPersistentContext('', launchOptions);
 const errors = [];
 context.on('page', (page) =>
   page.on('pageerror', (error) =>
@@ -130,6 +132,8 @@ try {
   await page.locator('.window-card').first().waitFor();
   assert.equal(await page.locator('#preview-banner').isVisible(), false);
   console.log('PASS: unpacked Manifest V3 extension loads with real Chrome APIs');
+  await verifyPageStatuses(context, page, artifacts);
+  await verifyGrantedPageStatuses(chromium, launchOptions, extensionRoot, artifacts);
   const fixture = await page.evaluate(async () => {
     const current = await chrome.windows.getCurrent();
     const create = (title, windowId = current.id) =>
@@ -279,7 +283,7 @@ try {
   const preview = await context.newPage();
   await preview.goto('http://127.0.0.1:5173');
   await preview.locator('.window-card').first().waitFor();
-  assert.equal(await preview.locator('.tab-row').count(), 19);
+  assert.equal(await preview.locator('.tab-row').count(), 24);
   await preview.screenshot({
     path: resolve(artifacts, 'tabtastic-desktop.png'),
     fullPage: true,
@@ -325,6 +329,19 @@ try {
   console.log('PASS: preview search, filters, drag-and-drop, density, and narrow layout');
   assert.deepEqual(errors, []);
   console.log('PASS: no uncaught browser errors');
+} catch (error) {
+  const dashboard = context.pages().find((page) => page.url().startsWith('chrome-extension://'));
+  if (dashboard) {
+    console.error(
+      await dashboard.evaluate(() => ({
+        toast: document.querySelector('#toast')?.textContent,
+        progress: document.querySelector('#provider-progress')?.textContent,
+        enableDisabled: document.querySelector('#provider-enable')?.disabled,
+      })),
+    );
+    await dashboard.screenshot({ path: resolve(artifacts, 'test-failure.png'), fullPage: true });
+  }
+  throw error;
 } finally {
   await context.close();
 }

@@ -849,6 +849,103 @@ h1 > span {
   display: flex;
   gap: 6px;
   align-items: center;
+  flex-shrink: 0;
+}
+
+.tab-status.has-page-status {
+  position: relative;
+  padding-inline-end: 16px;
+}
+
+/* Keep other indicators to the left so every page-state chip shares an edge. */
+.has-page-status > :not(.page-status-badge, .paused-mark) {
+  order: -1;
+}
+
+.provider-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  margin-top: 20px;
+  border: 1px solid #dce4d7;
+  border-radius: 9px;
+  background: #f0f4ec;
+  padding: 16px;
+}
+
+.provider-copy {
+  flex: 1 1 280px;
+}
+
+.provider-copy strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.provider-copy p,
+#provider-progress {
+  margin: 5px 0 0;
+  font-size: 11px;
+  color: #65755c;
+}
+
+.provider-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.provider-actions select {
+  min-width: 125px;
+  padding: 8px;
+  border: 1px solid #d7e0cf;
+  border-radius: 6px;
+  background: white;
+  color: #425439;
+}
+
+#provider-progress {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 10px;
+}
+
+.page-status-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 550;
+  white-space: nowrap;
+  background: #eff1f3;
+  color: #59636e;
+}
+
+.page-status-badge.tone-green {
+  background: #daf4e2;
+  color: #176a34;
+}
+
+.page-status-badge.tone-purple {
+  background: #eee4fb;
+  color: #7540a8;
+}
+
+.page-status-badge.tone-red {
+  background: #ffe9e8;
+  color: #a3323a;
+}
+
+.paused-mark {
+  position: absolute;
+  inset-inline-end: 0;
+  width: 10px;
+  text-align: center;
+  color: #778270;
+  font-size: 10px;
 }
 
 .tab-status svg {
@@ -1300,6 +1397,7 @@ dialog kbd {
   }
   #navigation {
     display: flex;
+    flex-wrap: wrap;
     gap: 5px;
   }
   .nav-button {
@@ -1307,7 +1405,7 @@ dialog kbd {
     font-size: 10px;
     gap: 6px;
     width: auto;
-    flex: 1;
+    flex: 1 1 40%;
   }
   .nav-button svg {
     width: 14px;

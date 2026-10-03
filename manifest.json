@@ -5,6 +5,7 @@
   "description": "A calmer new tab. Find, organise, and move your open tabs, windows, and groups.",
   "minimum_chrome_version": "102",
   "permissions": ["tabs", "tabGroups", "storage", "favicon"],
+  "optional_host_permissions": ["https://github.com/*"],
   "chrome_url_overrides": { "newtab": "index.html" },
   "action": { "default_title": "Open Tabtastic" },
   "icons": {
