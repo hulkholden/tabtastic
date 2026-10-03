@@ -32,6 +32,7 @@ After edits, run `bun run build` again, click **Reload** on Tabtastic’s extens
 - Drag a row above or below another tab to reorder it. Drag onto a group heading to append to that group, or onto a window’s bottom drop area to move there without a group. This changes Chrome itself. Pinned tabs can move only to another pinned section; the row’s **Move** button also supports moving them into windows without existing pinned tabs.
 - The row’s **Move** button is a keyboard-accessible alternative to dragging. The **Close** button closes that one tab; use Chrome’s Reopen closed tab command to restore it.
 - Search titles, URLs, group names, and Tabtastic window labels. `/` or `⌘/Ctrl K` focuses search, `Enter` switches to the first result, and `Escape` clears search. Search and duplicate highlighting temporarily reveal collapsed groups without changing their saved collapsed state.
+- **Theme** icon buttons (monitor, sun, and moon) offer **Use system default** (the default), **Light**, and **Dark**. Your choice persists across new tabs and browser restarts; system mode follows changes to your device’s appearance automatically.
 - Compact rows, local favicons, current-window indicators, and audio indicators.
 - **GitHub** view with Open, Draft, Merged, Closed, and Not planned badges for issue and pull-request tabs. Filter to **Closed / merged** to find finished work, then use each row’s Close button.
 
@@ -103,7 +104,7 @@ Set `EXTENSION_PATH=dist/tabtastic` when running `bun run test:browser` to test 
 
 - `tabs`: titles, URLs, and tab management.
 - `tabGroups`: group names, colours, and collapse state.
-- `storage`: window labels and page-status checks in session storage. The row-density preference uses local storage.
+- `storage`: window labels and page-status checks in session storage. The row-density and theme preferences use local storage.
 - `favicon`: Chrome’s cached favicon endpoint. No external favicon service is used.
 - Optional `https://github.com/*` access: read issue and PR status chips using authenticated page requests. Only requested when you enable statuses.
 

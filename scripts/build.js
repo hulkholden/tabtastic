@@ -14,6 +14,7 @@ const files = [
   'background.js',
   'lib/model.js',
   'lib/browser.js',
+  'lib/theme.js',
   'lib/demo.js',
   'lib/window-layout.js',
   'lib/page-status.js',

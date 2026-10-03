@@ -3,6 +3,49 @@ import { resolve } from 'node:path';
 import { mkdir } from 'node:fs/promises';
 import { verifyPageStatuses, verifyGrantedPageStatuses } from './test-page-status.js';
 
+async function verifyThemes(context, page) {
+  const selectedTheme = (target = page) =>
+    target.locator('#theme [aria-pressed="true"]').getAttribute('data-theme');
+  const chooseTheme = (value) => page.locator(`#theme [data-theme="${value}"]`).click();
+  const appliedTheme = () => page.locator('html').getAttribute('data-theme');
+  await page.emulateMedia({ colorScheme: 'light' });
+  assert.equal(await selectedTheme(), 'system');
+  assert.equal(await appliedTheme(), 'light');
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.waitForFunction(() => document.documentElement.dataset.theme === 'dark');
+  assert.equal(
+    await page.locator('html').evaluate((node) => getComputedStyle(node).colorScheme),
+    'dark',
+  );
+  await chooseTheme('light');
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.emulateMedia({ colorScheme: 'dark' });
+  assert.equal(await appliedTheme(), 'light');
+  await chooseTheme('dark');
+  await page.emulateMedia({ colorScheme: 'light' });
+  assert.equal(await appliedTheme(), 'dark');
+  await page.reload();
+  assert.equal(await appliedTheme(), 'dark');
+  assert.equal(await selectedTheme(), 'dark');
+
+  const other = await context.newPage();
+  await other.goto(page.url());
+  assert.equal(await selectedTheme(other), 'dark');
+  await chooseTheme('system');
+  await other.waitForFunction(
+    () =>
+      document.querySelector('#theme [data-theme="system"]').getAttribute('aria-pressed') ===
+      'true',
+  );
+  assert.equal(await appliedTheme(), 'light');
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.waitForFunction(() => document.documentElement.dataset.theme === 'dark');
+  await other.close();
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.waitForFunction(() => document.documentElement.dataset.theme === 'light');
+  console.log('PASS: system theme changes, explicit overrides, reload persistence, and tab sync');
+}
+
 async function verifyWindowLayout(page, fixture) {
   await page.evaluate(async ({ otherWindowId }) => {
     await chrome.windows.create({ url: 'https://example.com/layout-only-3', focused: false });
@@ -132,6 +175,7 @@ try {
   await page.locator('.window-card').first().waitFor();
   assert.equal(await page.locator('#preview-banner').isVisible(), false);
   console.log('PASS: unpacked Manifest V3 extension loads with real Chrome APIs');
+  await verifyThemes(context, page);
   await verifyPageStatuses(context, page, artifacts);
   await verifyGrantedPageStatuses(chromium, launchOptions, extensionRoot, artifacts);
   const fixture = await page.evaluate(async () => {
@@ -289,6 +333,13 @@ try {
     fullPage: true,
     animations: 'disabled',
   });
+  await preview.locator('#theme [data-theme="dark"]').click();
+  await preview.screenshot({
+    path: resolve(artifacts, 'tabtastic-desktop-dark.png'),
+    fullPage: true,
+    animations: 'disabled',
+  });
+  await preview.locator('#theme [data-theme="system"]').click();
   await preview.getByRole('button', { name: 'Find duplicates', exact: false }).click();
   assert.equal(await preview.locator('.is-duplicate').count(), 6);
   await preview.screenshot({
