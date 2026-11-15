@@ -43,6 +43,7 @@ Download `tabtastic-v0.2.0.zip` from the resulting GitHub release for Chrome Web
 1. Open the existing Tabtastic item in the Chrome Web Store Developer Dashboard.
 2. Upload `dist/tabtastic.zip` as the new package and verify version 0.2.0.
 3. Update the listing with the changes above and check that privacy disclosures describe optional GitHub status requests.
+   Set the privacy policy URL to https://github.com/hulkholden/tabtastic/blob/main/PRIVACY.md once this file is merged into `main`.
 4. Submit for review when ready. Building this package does not submit or publish it.
 
 Required permissions remain `tabs`, `tabGroups`, `storage`, and `favicon`. Optional `https://github.com/*` access lets Tabtastic fetch issue and pull-request pages using the browser's existing sign-in and read their status chips. Access is requested only when the user enables statuses. No GitHub token is required; Tabtastic does not read or store credentials. Status results are cached in session storage; theme and row-density preferences use local storage. There is no telemetry or remote code.

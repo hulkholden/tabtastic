@@ -102,6 +102,8 @@ Set `EXTENSION_PATH=dist/tabtastic` when running `bun run test:browser` to test 
 
 ## Permissions and privacy
 
+Read the [privacy policy](PRIVACY.md) for details about local data handling and optional GitHub requests.
+
 - `tabs`: titles, URLs, and tab management.
 - `tabGroups`: group names, colours, and collapse state.
 - `storage`: window labels and page-status checks in session storage. The row-density and theme preferences use local storage.
