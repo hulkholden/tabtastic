@@ -100,7 +100,36 @@ To use an existing Playwright/browser installation, set `PLAYWRIGHT_MODULE` to i
 
 Set `EXTENSION_PATH=dist/tabtastic` when running `bun run test:browser` to test the generated bundle instead of the source folder. Automated tests always use a temporary profile; manual loading into your usual Chrome profile is what connects the extension to your real tabs.
 
+## Build and release
+
+To prepare a Chrome Web Store package locally:
+
+```sh
+bun install --frozen-lockfile
+bun run check
+bun run test
+bun run build
+```
+
+The build creates `dist/tabtastic.zip` with `manifest.json` at the ZIP root and an equivalent unpacked extension in `dist/tabtastic/`. Before releasing, run the browser suite against that bundle as described under Verification above.
+
+To publish a GitHub release, update the version in both `package.json` and `manifest.json`, then merge those changes into `main`. Tag the merged commit using the package version:
+
+```sh
+git switch main
+git pull --ff-only origin main
+release_version=$(bun -p "require('./package.json').version")
+git tag -a "v${release_version}" -m "Tabtastic ${release_version}"
+git push origin "v${release_version}"
+```
+
+The [release workflow](.github/workflows/release.yml) runs on `v*` tag pushes. It requires a stable `vMAJOR.MINOR.PATCH` tag matching both version fields and a commit reachable from `main`. It installs locked dependencies, runs lint, formatting and unit tests, builds and checks the ZIP, and creates a GitHub release with generated notes and a `tabtastic-vMAJOR.MINOR.PATCH.zip` attachment. It uses the built-in GitHub token; no additional secret is required. Existing releases are not overwritten, so rerunning a successfully published release fails at release creation.
+
+Chrome Web Store submission is manual. Download the ZIP from the GitHub release (or use the locally built `dist/tabtastic.zip`), upload it to the existing Tabtastic item in the Developer Dashboard, and verify the version. Review the listing and privacy disclosures for any changed functionality, then submit for review. Use https://github.com/hulkholden/tabtastic/blob/main/PRIVACY.md as the privacy policy URL.
+
 ## Permissions and privacy
+
+Read the [privacy policy](PRIVACY.md) for details about local data handling and optional GitHub requests.
 
 - `tabs`: titles, URLs, and tab management.
 - `tabGroups`: group names, colours, and collapse state.
