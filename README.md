@@ -123,7 +123,7 @@ git tag -a "v${release_version}" -m "Tabtastic ${release_version}"
 git push origin "v${release_version}"
 ```
 
-The [release workflow](.github/workflows/release.yml) runs on `v*` tag pushes. It requires a stable `vMAJOR.MINOR.PATCH` tag matching both version fields and a commit reachable from `main`. It installs locked dependencies, runs lint, formatting and unit tests, builds and checks the ZIP, and creates a GitHub release with generated notes and a `tabtastic-vMAJOR.MINOR.PATCH.zip` attachment. It uses the built-in GitHub token; no additional secret is required. Existing releases are not overwritten, so rerunning a successfully published release fails at release creation.
+The [release workflow](.github/workflows/release.yml) runs on `v*` tag pushes. It requires a stable `vMAJOR.MINOR.PATCH` tag matching both version fields and a commit reachable from `main`. It installs locked dependencies, runs lint, formatting and unit tests, builds and checks the ZIP, and creates a GitHub release with generated notes and a `tabtastic-vMAJOR.MINOR.PATCH.zip` attachment. It uses the built-in GitHub token; no additional secret is required. If the release already exists, the workflow uploads the ZIP without changing its title or notes. If an attachment with the expected name already exists, it is left unchanged, so reruns are safe.
 
 Chrome Web Store submission is manual. Download the ZIP from the GitHub release (or use the locally built `dist/tabtastic.zip`), upload it to the existing Tabtastic item in the Developer Dashboard, and verify the version. Review the listing and privacy disclosures for any changed functionality, then submit for review. Use https://github.com/hulkholden/tabtastic/blob/main/PRIVACY.md as the privacy policy URL.
 

@@ -47,12 +47,21 @@ jobs:
           unzip -t dist/tabtastic.zip
           cp dist/tabtastic.zip "dist/tabtastic-${GITHUB_REF_NAME}.zip"
 
-      - name: Create GitHub release
+      - name: Publish release asset
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          gh release create "$GITHUB_REF_NAME" "dist/tabtastic-${GITHUB_REF_NAME}.zip" \
-            --verify-tag \
-            --title "Tabtastic ${GITHUB_REF_NAME}" \
-            --generate-notes
+          asset="tabtastic-${GITHUB_REF_NAME}.zip"
+          if gh release view "$GITHUB_REF_NAME" --json assets > release.json; then
+            if jq -e --arg name "$asset" '.assets | any(.name == $name)' release.json > /dev/null; then
+              echo "Release asset already exists: $asset"
+            else
+              gh release upload "$GITHUB_REF_NAME" "dist/$asset"
+            fi
+          else
+            gh release create "$GITHUB_REF_NAME" "dist/$asset" \
+              --verify-tag \
+              --title "Tabtastic ${GITHUB_REF_NAME}" \
+              --generate-notes
+          fi
