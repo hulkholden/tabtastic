@@ -1,0 +1,58 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Validate release tag and versions
+        run: |
+          git merge-base --is-ancestor HEAD origin/main
+          bun - <<'JS'
+          import assert from 'node:assert/strict';
+          const tag = process.env.GITHUB_REF_NAME;
+          assert.match(tag, /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/, 'Expected vMAJOR.MINOR.PATCH');
+          for (const file of ['package.json', 'manifest.json']) {
+            const { version } = await Bun.file(file).json();
+            assert.equal(`v${version}`, tag, `${file} version must match the release tag`);
+          }
+          JS
+
+      - run: bun install --frozen-lockfile
+      - run: bun run check
+      - run: bun run test
+      - run: bun run build
+
+      - name: Prepare release asset
+        run: |
+          unzip -t dist/tabtastic.zip
+          cp dist/tabtastic.zip "dist/tabtastic-${GITHUB_REF_NAME}.zip"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "dist/tabtastic-${GITHUB_REF_NAME}.zip" \
+            --verify-tag \
+            --title "Tabtastic ${GITHUB_REF_NAME}" \
+            --generate-notes

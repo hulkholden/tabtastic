@@ -23,6 +23,21 @@ Run the preview server with `bun run dev`, then run `EXTENSION_PATH=dist/tabtast
 
 The store package is `dist/tabtastic.zip`. It contains the complete extension with `manifest.json` at the ZIP root. Both package.json and manifest.json declare version 0.2.0. The unpacked equivalent is `dist/tabtastic/`.
 
+## Release from a Git tag
+
+The release workflow runs when a `v*` tag is pushed. It requires a stable `vMAJOR.MINOR.PATCH` tag matching both package.json and manifest.json, and the tagged commit must be on `main`. It installs the locked dependencies, runs lint, formatting and unit tests, builds the ZIP, and creates a GitHub release with generated notes and a versioned ZIP attachment. Browser tests remain a local pre-release check.
+
+Merge the release changes (including the workflow) into `main` first, then:
+
+```sh
+git switch main
+git pull --ff-only origin main
+git tag -a v0.2.0 -m "Tabtastic 0.2.0"
+git push origin v0.2.0
+```
+
+Download `tabtastic-v0.2.0.zip` from the resulting GitHub release for Chrome Web Store upload. The workflow uses the built-in GitHub token; no additional secret is required. It publishes a GitHub release only; Chrome Web Store submission is still manual. For future releases, update both version fields before tagging. Existing releases are not overwritten; a rerun after successful publication will fail at release creation.
+
 ## Chrome Web Store submission
 
 1. Open the existing Tabtastic item in the Chrome Web Store Developer Dashboard.
