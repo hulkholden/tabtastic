@@ -813,7 +813,10 @@ function renderTabStatus(tab, duplicate) {
   }
   if (duplicate) {
     const mark = el('span', 'duplicate-mark', 'duplicate');
-    mark.title = 'The same full URL is open in another tab';
+    mark.title =
+      pageStatus?.provider.id === 'github'
+        ? 'The same GitHub issue or pull request is open in another tab'
+        : 'The same full URL is open in another tab';
     status.append(mark);
   }
   if (tab.audible) {
@@ -1007,7 +1010,7 @@ function showHelp() {
   const duplicates = el(
     'p',
     '',
-    'Duplicate detection compares full URLs across all windows, including query strings and #fragments. It highlights matches without closing them. Search matches titles, URLs, group names, and window labels.',
+    'Duplicate detection compares full URLs across all windows, including query strings and #fragments, and treats tabs pointing to the same GitHub issue or pull request (including subpages) as duplicates. It highlights matches without closing them. Search matches titles, URLs, group names, and window labels.',
   );
   const names = el(
     'p',
