@@ -28,6 +28,49 @@ test('duplicates span windows but preserve meaningful URL differences', () => {
   assert.deepEqual(findDuplicates(tabs), { groups: [[1, 2]], ids: new Set([1, 2]), extra: 1 });
 });
 
+test('GitHub issue and PR tabs dedupe across subpages, queries, fragments, and repo casing', () => {
+  const tabs = [
+    { id: 1, url: 'https://github.com/some-org/some-repo/pull/1234' },
+    { id: 2, url: 'https://github.com/some-org/some-repo/pull/1234/changes' },
+    { id: 3, url: 'https://github.com/some-org/some-repo/pull/1234/files?diff=split&w=1#diff-abc' },
+    { id: 4, url: 'https://github.com/some-org/some-repo/pull/1234/commits/deadbeef' },
+    { id: 5, url: 'https://github.com/some-org/some-repo/pull/1234/checks?check_run_id=99' },
+    { id: 6, url: 'https://github.com/Some-Org/Some-Repo/pull/1234#issuecomment-1' },
+    { id: 7, url: 'https://github.com/some-org/some-repo/issues/1234' },
+    { id: 8, url: 'https://github.com/some-org/some-repo/issues/42' },
+    { id: 9, url: 'https://github.com/some-org/some-repo/issues/42#issuecomment-77' },
+    { id: 10, url: 'https://github.com/SOME-ORG/some-repo/issues/42/?reload=1' },
+    {
+      id: 11,
+      url: 'https://github.com/some-org/some-repo/pull/1234',
+      pendingUrl: 'https://github.com/some-org/some-repo/pull/9999',
+    },
+    { id: 12, url: 'https://github.com/some-org/some-repo/pull/1235' },
+    { id: 13, url: 'https://github.com/some-org/other-repo/pull/1234' },
+    { id: 14, url: 'https://github.com/other-org/some-repo/pull/1234' },
+    { id: 15, url: 'https://github.com/some-org/some-repo/issues' },
+    { id: 16, url: 'https://github.com/some-org/some-repo/issues?q=is%3Aopen' },
+    { id: 17, url: 'https://github.com/some-org/some-repo/issues/new' },
+    { id: 18, url: 'https://github.com/some-org/some-repo/issues/new?template=bug.md' },
+    { id: 19, url: 'https://github.com/some-org/some-repo/commit/1234' },
+    { id: 20, url: 'https://github.com/some-org/some-repo/discussions/1234' },
+    { id: 21, url: 'https://github.com/some-org/some-repo/pull/1234.diff' },
+    { id: 22, url: 'https://github.com/some-org/some-repo/blob/main/index.js#L1' },
+    { id: 23, url: 'https://github.com/some-org/some-repo/blob/main/index.js#L2' },
+    { id: 24, url: 'https://github.com.evil.test/some-org/some-repo/pull/1234' },
+    { id: 25, url: 'https://github.com.evil.test/some-org/some-repo/pull/1234/changes' },
+    { id: 26, url: 'http://github.com/some-org/some-repo/pull/1234' },
+  ];
+  assert.deepEqual(findDuplicates(tabs), {
+    groups: [
+      [1, 2, 3, 4, 5, 6, 7],
+      [8, 9, 10],
+    ],
+    ids: new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+    extra: 8,
+  });
+});
+
 test('sorting preserves pinned and group boundaries, including separate ungrouped runs', () => {
   const window = {
     tabs: [
